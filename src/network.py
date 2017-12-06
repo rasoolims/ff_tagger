@@ -38,7 +38,7 @@ class Network:
         # define the bias vector and initialize it as zero.
         self.output_bias = self.model.add_parameters(vocab.num_tags(), init=dynet.ConstInitializer(0))
 
-    def forward(self, features):
+    def build_graph(self, features):
         # extract word and tags ids
         word_ids = [self.vocab.word2id(word_feat) for word_feat in features[0:5]]
         tag_ids = [self.vocab.feat_tag2id(tag_feat) for tag_feat in features[5:]]
@@ -51,13 +51,13 @@ class Network:
         embedding_layer = dynet.concatenate(word_embeds + tag_embeds)
 
         # calculating the hidden layer
-        # .expr() converts a parameter to a matrix expression in dynetnet (its a dynetnet-specific syntax).
+        # .expr() converts a parameter to a matrix expression in dynet (its a dynet-specific syntax).
         hidden = self.transfer(self.hidden_layer.expr() * embedding_layer + self.hidden_layer_bias.expr())
 
         # calculating the output layer
         output = self.output_layer.expr() * hidden + self.output_bias.expr()
 
-        # return a list of outputs
+        # return the output as a dynet vector (expression)
         return output
 
     def train(self, train_file, epochs):
@@ -84,7 +84,7 @@ class Network:
                 fields = line.strip().split('\t')
                 features, label = fields[:-1], fields[-1]
                 gold_label = self.vocab.tag2id(label)
-                result = self.forward(features)
+                result = self.build_graph(features)
 
                 # getting loss with respect to negative log softmax function and the gold label.
                 loss = dynet.pickneglogsoftmax(result, gold_label)
@@ -97,7 +97,7 @@ class Network:
                     # now we have enough loss values to get loss for minibatch
                     minibatch_loss = dynet.esum(losses) / len(losses)
 
-                    # calling dynetnet to run forward computation for all minibatch items
+                    # calling dynet to run forward computation for all minibatch items
                     minibatch_loss.forward()
 
                     # getting float value of the loss for current minibatch
@@ -113,16 +113,16 @@ class Network:
                         progress = round(100 * float(step) / len(train_data), 2)
                         print 'current minibatch loss', minibatch_loss_value, 'progress:', progress, '%'
 
-                    # calling dynetnet to run backpropagation
+                    # calling dynet to run backpropagation
                     minibatch_loss.backward()
 
-                    # calling dynetnet to change parameter values with respect to current backpropagation
+                    # calling dynet to change parameter values with respect to current backpropagation
                     self.updater.update()
 
                     # empty the loss vector
                     losses = []
 
-                    # refresh the memory of dynetnet
+                    # refresh the memory of dynet
                     dynet.renew_cg()
 
             # there are still some minibatch items in the memory but they are smaller than the minibatch size
@@ -138,7 +138,7 @@ class Network:
             features = words[i - 2:i + 3] + tags[i - 2:i]
 
             # running forward
-            output = self.forward(features)
+            output = self.build_graph(features)
 
             # getting list value of the output
             scores = output.npvalue()
